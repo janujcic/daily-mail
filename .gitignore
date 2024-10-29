@@ -1,1 +1,3 @@
 config.ini
+.venv
+chrome-*.json
