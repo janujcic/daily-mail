@@ -26,11 +26,37 @@ def list_files_in_folder(folder_id):
         print(f"File ID: {file['id']} - Name: {file['name']}")
     return files
 
+def get_file_content(file_id):
+    """Retrieve the content of a specific file from Google Drive."""
+    try:
+        # Get the file metadata to determine the MIME type
+        file_metadata = drive_service.files().get(fileId=file_id, fields='name, mimeType').execute()
+        file_name = file_metadata['name']
+        mime_type = file_metadata['mimeType']
+        
+        # Retrieve the file content
+        request = drive_service.files().get_media(fileId=file_id)
+        file_content = request.execute()
+        
+        # Decode content if it's text-based
+        if mime_type.startswith('text/') or mime_type == 'application/json':
+            file_content = file_content.decode('utf-8')
+        
+        print(f"Successfully retrieved content of file: {file_name}")
+        return file_content
+    
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
 
 def main():
     
     # STEP 1: get a list of existing files from the Drive
-    list_files_in_folder(FOLDER_ID)
+    files = list_files_in_folder(FOLDER_ID)
+
+    file_content = get_file_content(files[0]['id'])
+    print(file_content)
 
     # STEP 2: grab the metadata files (recipients/sending_config & recently_sent_files)
 
