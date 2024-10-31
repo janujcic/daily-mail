@@ -1,0 +1,4 @@
+config.ini
+.venv
+chrome-*.json
+client_secret*
