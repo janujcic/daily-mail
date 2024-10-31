@@ -1,4 +1,5 @@
 import configparser
+import json
 import smtplib
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
@@ -42,13 +43,13 @@ def get_file_gdrive(drive_service, file_id):
         print(f"An error occurred: {e}")
         return None
 
-def send_email_smtp(gmail_username, gmail_password, recipient_email, subject, message_text):
+def send_email_smtp(gmail_username, gmail_password, recipient_emails, subject, message_text):
     """Send an email using Gmail's SMTP server."""
     try:
         # Create the email
         message = MIMEMultipart()
         message['From'] = gmail_username
-        message['To'] = recipient_email
+        message['To'] = ', '.join(recipient_emails)
         message['Subject'] = subject
 
         # Attach the message text
@@ -57,8 +58,8 @@ def send_email_smtp(gmail_username, gmail_password, recipient_email, subject, me
         # Connect to Gmail's SMTP server
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(gmail_username, gmail_password)
-            server.sendmail(gmail_username, recipient_email, message.as_string())
-            print(f"Email sent to {recipient_email}")
+            server.sendmail(gmail_username, recipient_emails, message.as_string())
+            print(f"Email sent to {', '.join(recipient_emails)}")
     
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -68,7 +69,7 @@ def main():
     config = configparser.ConfigParser()
     config.read('config.ini')
 
-    # Google client info
+    # Google info
     SERVICE_ACCOUNT_FILE = config['google_drive']['service_account_file']
     GMAIL_USERNAME = config['gmail']['gmail_username']
     GMAIL_PASSWORD = config['gmail']['gmail_password']
@@ -77,6 +78,11 @@ def main():
 
     creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
     drive_service = build('drive', 'v3', credentials=creds)
+
+    with open('sending_config.json') as f:
+        sending_config = json.load(f)
+
+    recipients = sending_config['recipients']
 
     # STEP 1: get a list of existing files from the Drive
     files = list_files_gdrive_folder(drive_service, FOLDER_ID)
@@ -87,7 +93,6 @@ def main():
     # STEP 2: grab the metadata files (recipients/sending_config & recently_sent_files)
 
     # STEP 3: grab the data from the metadata files
-    recipients = []
     nb_saved_old_files = 30
     ignore_files = []
 
@@ -97,9 +102,8 @@ def main():
 
     # STEP 6: Send the file content via email
     if file:
-        recipient = 'test_email@test.com'
         subject = f"{file['file_name']}"
-        send_email_smtp(GMAIL_USERNAME, GMAIL_PASSWORD, recipient, subject, file['file_content'])
+        send_email_smtp(GMAIL_USERNAME, GMAIL_PASSWORD, recipients, subject, file['file_content'])
 
     # STEP 7: Update the ignore_files folder and save it to the drive 
 
