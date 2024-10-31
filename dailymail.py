@@ -43,6 +43,15 @@ def get_file_gdrive(drive_service, file_id):
         print(f"An error occurred: {e}")
         return None
 
+def find_file_from_list(files, file_name):
+    """Find a file in the list of Google Drive files based on the name. """
+
+    for file in files:
+        if file['name'] == file_name:
+            return file
+        
+    return None
+
 def send_email_smtp(gmail_username, gmail_password, recipient_emails, subject, message_text):
     """Send an email using Gmail's SMTP server."""
     try:
@@ -79,16 +88,17 @@ def main():
     creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
     drive_service = build('drive', 'v3', credentials=creds)
 
-    with open('sending_config.json') as f:
-        sending_config = json.load(f)
-
-    recipients = sending_config['recipients']
+    sending_config_name = config["drive_files"]["sending_config"]
 
     # STEP 1: get a list of existing files from the Drive
     files = list_files_gdrive_folder(drive_service, FOLDER_ID)
 
-    file = get_file_gdrive(drive_service, files[0]['id'])
-    print(file)
+    file = get_file_gdrive(drive_service, files[2]['id'])
+
+    sending_config_metadata = find_file_from_list(files, sending_config_name)
+    sending_config_file = get_file_gdrive(drive_service, sending_config_metadata['id'])
+    sending_config = json.loads(sending_config_file["file_content"])
+    recipients = sending_config['recipients']
 
     # STEP 2: grab the metadata files (recipients/sending_config & recently_sent_files)
 
