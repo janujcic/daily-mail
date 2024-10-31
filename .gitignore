@@ -2,3 +2,4 @@ config.ini
 .venv
 chrome-*.json
 client_secret*
+sending_config.json
