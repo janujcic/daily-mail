@@ -1,0 +1,5 @@
+{
+  "recipients": ["email1", "email2"],
+  "recently_sent_files": ["file1.md", "file2.md"],
+  "ignore_files": ["sending_config.json"]
+}
