@@ -1,5 +1,6 @@
 import configparser
 import json
+import random
 import smtplib
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
@@ -15,8 +16,8 @@ def list_files_gdrive_folder(drive_service, folder_id):
         fields="files(id, name)"
     ).execute()
     files = results.get('files', [])
-    for file in files:
-        print(f"File ID: {file['id']} - Name: {file['name']}")
+    
+    print(f"Number of files in the Google Drive folder: {len(files)}")
     return files
 
 def get_file_gdrive(drive_service, file_id):
@@ -136,6 +137,22 @@ def update_file_from_memory_to_gdrive(drive_service, folder_id, file):
     except Exception as e:
         print(f"An error occurred while uploading the file: {e}")
 
+def grab_random_file_from_gdrive(drive_service, file_list, ignore_files):
+    """ Selects a random file from file_list excluding those in ignore_files and retrieves its content. """
+
+    # Filter out ignored files from the list
+    filtered_files = [file for file in file_list if file['name'] not in ignore_files]
+
+    if not filtered_files:
+        print("No files available after ignoring specified files.")
+        return None
+
+    # Select a random file from the filtered list
+    selected_file = random.choice(filtered_files)
+
+    return get_file_gdrive(drive_service, selected_file['id'])
+    
+
 def main():
     # Load configuration from config.ini
     config = configparser.ConfigParser()
@@ -143,41 +160,47 @@ def main():
 
     # Google info
     SERVICE_ACCOUNT_FILE = config['google_drive']['service_account_file']
-    GMAIL_USERNAME = config['gmail']['gmail_username']
-    GMAIL_PASSWORD = config['gmail']['gmail_password']
-    SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/gmail.send']
     FOLDER_ID = config['google_drive']['folder_id']
 
+    # not a secure way to send email (used just for local testing)
+    GMAIL_USERNAME = config['gmail']['gmail_username']
+    GMAIL_PASSWORD = config['gmail']['gmail_password']
+
+    SENDING_CONFIG_NAME = config["drive_files"]["sending_config"]
+
+    SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/gmail.send']
+    
     creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
     drive_service = build('drive', 'v3', credentials=creds)
 
-    sending_config_name = config["drive_files"]["sending_config"]
+    SENDING_CONFIG_NAME = config["drive_files"]["sending_config"]
 
     # STEP 1: get a list of existing files from the Drive
-    files = list_files_gdrive_folder(drive_service, FOLDER_ID)
-
-    file = get_file_gdrive(drive_service, files[3]['id'])
-
-    sending_config_file = get_file_gdrive(drive_service, find_file_from_list(files, sending_config_name)['id'])
-    sending_config = json.loads(sending_config_file["file_content"])
-    recipients = sending_config['recipients']
-
-    new_sending_config_file = update_recently_sent_file_json(sending_config_file, file['file_name'])
+    gdrive_files = list_files_gdrive_folder(drive_service, FOLDER_ID)
 
     # STEP 2: grab the metadata files (recipients/sending_config & recently_sent_files)
-
+    sending_config_file = get_file_gdrive(drive_service, find_file_from_list(gdrive_files, SENDING_CONFIG_NAME)['id'])
+    
     # STEP 3: grab the data from the metadata files
+    sending_config = json.loads(sending_config_file["file_content"])
+    recipients = sending_config['recipients']
+    ignore_files = sending_config['ignore_files']
+    recently_sent_files = sending_config['recently_sent_files']
 
     # STEP 4: Grab a random file from the existin files on the Drive (ignore if in ignore_files)
+    #file = get_file_gdrive(drive_service, gdrive_files[3]['id'])
+    random_file = grab_random_file_from_gdrive(drive_service, gdrive_files, ignore_files+recently_sent_files)
 
     # STEP 5: Process the random file
 
     # STEP 6: Send the file content via email
-    if file:
-        subject = f"{file['file_title']}"
-        #send_email_smtp(GMAIL_USERNAME, GMAIL_PASSWORD, recipients, subject, file['file_content'])
+    if random_file and len(recipients)>0:
+        subject = f"{random_file['file_title']}"
+        send_email_smtp(GMAIL_USERNAME, GMAIL_PASSWORD, recipients, subject, random_file['file_content'])
 
     # STEP 7: Update the ignore_files folder and save it to the drive 
+    new_sending_config_file = update_recently_sent_file_json(sending_config_file, random_file['file_name'])
+
     update_file_from_memory_to_gdrive(drive_service, FOLDER_ID, new_sending_config_file)
 
 
