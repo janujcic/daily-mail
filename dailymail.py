@@ -1,6 +1,8 @@
 import configparser
 import json
 import random
+import markdown
+import re
 import smtplib
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
@@ -67,7 +69,7 @@ def send_email_smtp(gmail_username, gmail_password, recipient_emails, subject, m
         message['Subject'] = subject
 
         # Attach the message text
-        message.attach(MIMEText(message_text, 'plain'))
+        message.attach(MIMEText(message_text, 'html'))
 
         # Connect to Gmail's SMTP server
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
@@ -151,7 +153,73 @@ def grab_random_file_from_gdrive(drive_service, file_list, ignore_files):
     selected_file = random.choice(filtered_files)
 
     return get_file_gdrive(drive_service, selected_file['id'])
+
+def prepare_markdown_for_html(markdown_text):
+    """Prepares Markdown text for email by replacing [[...]] links and listing #tags at the beginning. """
+
+    # Find all tags (#tag format) and add them to a list
+    tags = re.findall(r'#(\w+)', markdown_text)
+    tags_section = f"**Tags:** {', '.join(tags)}\n\n" if tags else ""
     
+    # Remove all #tags from the markdown text
+    markdown_text = re.sub(r'#\w+', '', markdown_text)
+
+    # Replace [[...]] links with underscores
+    markdown_text = re.sub(r'\[\[', '[_', markdown_text)
+    markdown_text = re.sub(r'\]\]', '_]', markdown_text)
+    
+    # Add tags section at the beginning of the markdown text
+    email_ready_text = tags_section + markdown_text.strip()
+    
+    return email_ready_text
+
+def markdown_to_email_html(markdown_text):
+    """ Converts Markdown text to HTML for email-friendly formatting. """
+    
+    # Convert Markdown to HTML
+    html_content = markdown.markdown(markdown_text)
+    
+    # Wrap with email-safe HTML styling
+    email_html = f"""
+    <html>
+        <head>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                }}
+                h1, h2, h3 {{
+                    color: #4CAF50;
+                }}
+                p {{
+                    margin: 10px 0;
+                }}
+                ul, ol {{
+                    margin: 10px 0;
+                    padding-left: 20px;
+                }}
+                a {{
+                    color: #4CAF50;
+                    text-decoration: none;
+                }}
+                a:hover {{
+                    text-decoration: underline;
+                }}
+                blockquote {{
+                    border-left: 4px solid #ddd;
+                    padding-left: 10px;
+                    color: #555;
+                }}
+            </style>
+        </head>
+        <body>
+            {html_content}
+        </body>
+    </html>
+    """
+
+    return email_html
 
 def main():
     # Load configuration from config.ini
@@ -192,11 +260,14 @@ def main():
     random_file = grab_random_file_from_gdrive(drive_service, gdrive_files, ignore_files+recently_sent_files)
 
     # STEP 5: Process the random file
+    adapted_markdown = prepare_markdown_for_html(random_file['file_content'])
+    email_html_content = markdown_to_email_html(adapted_markdown)
+    print(email_html_content)
 
     # STEP 6: Send the file content via email
     if random_file and len(recipients)>0:
         subject = f"{random_file['file_title']}"
-        send_email_smtp(GMAIL_USERNAME, GMAIL_PASSWORD, recipients, subject, random_file['file_content'])
+        send_email_smtp(GMAIL_USERNAME, GMAIL_PASSWORD, recipients, subject, email_html_content)
 
     # STEP 7: Update the ignore_files folder and save it to the drive 
     new_sending_config_file = update_recently_sent_file_json(sending_config_file, random_file['file_name'])
